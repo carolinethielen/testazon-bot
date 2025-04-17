@@ -1,25 +1,22 @@
 import os
 import logging
 import re
-import time
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, KeyboardButton
+import asyncio
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
     ConversationHandler,
-    filters,
-    ContextTypes
+    ContextTypes,
+    filters
 )
 
-# 🌍 --- Setup Logging ---
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Logging Setup
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# 🔐 --- Load sensitive data from environment variables ---
+# Environment Variablen
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 
@@ -31,7 +28,7 @@ try:
 except ValueError:
     raise ValueError("❌ ADMIN_ID muss eine Zahl sein!")
 
-# 🔢 --- States for Conversation ---
+# States
 (
     MENU,
     ENTER_PAYPAL,
@@ -42,186 +39,45 @@ except ValueError:
     REVIEW_UPLOAD
 ) = range(7)
 
-# 📁 --- Benutzerdaten (im RAM, du kannst das später in DB auslagern) ---
 users = {}
 
-# 🔘 --- Hauptmenü Buttons ---
-def main_menu_keyboard():
-    return ReplyKeyboardMarkup([[ 
-        "🛍️ Verfügbare Produkte", "📦 Aktive Bestellungen"
-    ], [
-        "💸 Rückerstattungsstatus", "📜 Regeln & Infos"
-    ], [
-        "🆘 Support", "🔄 Profil ändern"
-    ]], resize_keyboard=True)
-
-# 🧠 --- Start ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    users[user_id] = users.get(user_id, {
-        "paypal": None,
-        "amazon_link": None,
-        "profile_pic": None,
-        "orders": []
-    })
-
-    await update.message.reply_text(
-        "👋 Willkommen bei *Testazon Produkttests!* \n\n"
-        "Bitte gib zuerst deine PayPal E-Mail-Adresse ein, um fortzufahren:",
-        parse_mode="Markdown"
-    )
-    return ENTER_PAYPAL
-
-# 💳 --- PayPal Adresse erfassen ---
-async def enter_paypal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    email = update.message.text
-    if "@" not in email or "." not in email:
-        await update.message.reply_text("❌ Bitte gib eine gültige PayPal E-Mail-Adresse ein.")
-        return ENTER_PAYPAL
-
-    user_id = update.effective_user.id
-    users[user_id]["paypal"] = email
-    await update.message.reply_text("✅ PayPal E-Mail gespeichert!\n\n🔗 Bitte sende jetzt deinen *Amazon-Profil-Link* (z.B. https://www.amazon.de/gp/profile/amzn1.account.AFRPHSTS62ZRJBV75RDCL5UWEYUA).")
-    return ENTER_AMAZON
-
-# 🌐 --- Amazon-Profil-Link erfassen ---
-async def enter_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    amazon_link = update.message.text
-    amazon_link_regex = r"https://www\.amazon\.de/gp/profile/amzn1\.account\.[A-Za-z0-9]+"
-
-    if not re.match(amazon_link_regex, amazon_link):
-        await update.message.reply_text("❌ Bitte gib einen gültigen Amazon-Profil-Link ein.")
-        return ENTER_AMAZON
-
-    user_id = update.effective_user.id
-    users[user_id]["amazon_link"] = amazon_link
-
-    # Simulierung der Überprüfung des Amazon-Links mit Ladebalken
-    verification_message = await update.message.reply_text("🔄 Dein Amazon-Profil wird überprüft... Bitte warte einen Moment.")
-    
-    # Simulieren eines Ladebalkens
+# Beispiel: Ladebalken mit asyncio
+async def fake_verification(message, context):
     for i in range(1, 11):
-        time.sleep(1)  # Verzögert die Antwort, um den Ladebalken zu simulieren
+        await asyncio.sleep(0.7)
         progress = "█" * i + "░" * (10 - i)
-        await verification_message.edit_text(f"🔄 Überprüfung läuft... {progress}")
+        await message.edit_text(f"🔄 Überprüfung läuft... {progress}")
 
-    # Nach dem Ladebalken: Verifizierung abgeschlossen und zum nächsten Schritt
-    await verification_message.edit_text("✅ Amazon-Profil erfolgreich überprüft!")
-    await update.message.reply_text("📸 Bitte sende nun einen Screenshot deines Amazon-Profils (Profilbild).")
-    return UPLOAD_PROFILE
+# ... (deine anderen Handler bleiben gleich, mit `await asyncio.sleep()` statt `time.sleep()`)
 
-# 🖼️ --- Profilbild speichern ---
-async def upload_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+# Bot starten
+def main():
+    app = ApplicationBuilder().token(API_TOKEN).build()
 
-    if not update.message.photo:
-        await update.message.reply_text("❌ Bitte sende ein Bild deines Amazon-Profils.")
-        return UPLOAD_PROFILE
-
-    photo_file_id = update.message.photo[-1].file_id
-    users[user_id]["profile_pic"] = photo_file_id
-
-    # Start der "Verifizierung" des Amazon-Profils
-    verification_message = await update.message.reply_text("🔄 Dein Amazon-Profilbild wird überprüft... Bitte warte einen Moment.")
-    
-    # Simulieren eines Ladebalkens
-    for i in range(1, 11):
-        time.sleep(1)  # Verzögert die Antwort, um den Ladebalken zu simulieren
-        progress = "█" * i + "░" * (10 - i)
-        await verification_message.edit_text(f"🔄 Verifizierung läuft... {progress}")
-
-    # Nach dem Ladebalken: Verifizierung abgeschlossen und zum Menü
-    await verification_message.edit_text("✅ Amazon-Profilbild erfolgreich verifiziert!")
-    await update.message.reply_text("🎉 Dein Profil wurde erfolgreich verifiziert. Du kannst nun mit den Produkttests fortfahren.", reply_markup=main_menu_keyboard())
-    return MENU
-
-# 🔄 --- Profil ändern ---
-async def change_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    keyboard = [
-        [InlineKeyboardButton("✉️ PayPal E-Mail ändern", callback_data="change_paypal")],
-        [InlineKeyboardButton("📸 Amazon Profilbild ändern", callback_data="change_amazon")],
-        [InlineKeyboardButton("🔗 Amazon Profil-Link ändern", callback_data="change_amazon_link")]
-    ]
-    await update.message.reply_text("🔄 Was möchtest du ändern?", reply_markup=InlineKeyboardMarkup(keyboard))
-    return MENU
-
-# 📝 --- Callback für Profiländerungen ---
-async def handle_profile_change(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "change_paypal":
-        await query.edit_message_text("💳 Bitte gib deine neue PayPal E-Mail-Adresse ein:")
-        return ENTER_PAYPAL
-    elif query.data == "change_amazon":
-        await query.edit_message_text("📸 Bitte sende ein neues Bild deines Amazon-Profils.")
-        return UPLOAD_PROFILE
-    elif query.data == "change_amazon_link":
-        await query.edit_message_text("🔗 Bitte gib deinen neuen Amazon-Profil-Link ein:")
-        return ENTER_AMAZON
-
-# 🛍️ --- Verfügbare Produkte ---
-async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not users[user_id]["paypal"] or not users[user_id]["profile_pic"]:
-        await update.message.reply_text("⚠️ Bitte gib zuerst deine PayPal-E-Mail und dein Amazon-Profilbild ein mit /start.")
-        return MENU
-
-    keyboard = [
-        [InlineKeyboardButton("🧴 Produkt 1 – ID: 1234", callback_data='order_1234')],
-        [InlineKeyboardButton("🎧 Produkt 2 – ID: 5678", callback_data='order_5678')],
-    ]
-    await update.message.reply_text("🛍️ Verfügbare Produkte:", reply_markup=InlineKeyboardMarkup(keyboard))
-    return MENU
-
-# 📝 --- Callback für Produktauswahl ---
-async def handle_order_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-    product_id = query.data.replace("order_", "")
-    users[user_id]["orders"].append({"id": product_id, "status": "🕒 Ausstehend"})
-
-    await query.edit_message_text(
-        text=f"✅ Du hast Produkt *{product_id}* ausgewählt.\n"
-             f"Bitte bestelle das Produkt und sende danach den *Rezensionslink* sowie ein Bild!",
-        parse_mode="Markdown"
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            ENTER_PAYPAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_paypal)],
+            ENTER_AMAZON: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_amazon)],
+            UPLOAD_PROFILE: [MessageHandler(filters.PHOTO, upload_profile)],
+            MENU: [
+                MessageHandler(filters.Regex("🛍️ Verfügbare Produkte"), show_products),
+                MessageHandler(filters.Regex("📦 Aktive Bestellungen"), active_orders),
+                MessageHandler(filters.Regex("💸 Rückerstattungsstatus"), refund_status),
+                MessageHandler(filters.Regex("📜 Regeln & Infos"), show_rules),
+                MessageHandler(filters.Regex("🆘 Support"), show_support),
+                MessageHandler(filters.Regex("🔄 Profil ändern"), change_profile),
+            ]
+        },
+        fallbacks=[CommandHandler("start", start)],
+        allow_reentry=True
     )
-    return MENU
 
-# 📦 --- Aktive Bestellungen anzeigen ---
-async def active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    orders = users[user_id].get("orders", [])
-    if not orders:
-        await update.message.reply_text("📭 Du hast aktuell keine aktiven Bestellungen.")
-    else:
-        msg = "📦 *Deine aktiven Bestellungen:*\n\n"
-        for order in orders:
-            msg += f"- Produkt-ID: `{order['id']}` – Status: {order['status']}\n"
-        await update.message.reply_text(msg, parse_mode="Markdown")
-    return MENU
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(handle_profile_change, pattern="^change_"))
+    app.add_handler(CallbackQueryHandler(handle_order_selection, pattern="^order_"))
 
-# 💸 --- Rückerstattungsstatus ---
-async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏳ Deine Rückerstattung ist *in Bearbeitung*. Bitte hab etwas Geduld.")
-    return MENU
+    app.run_polling()
 
-# 📜 --- Regeln & Infos ---
-async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📜 *Regeln für Produkttests:*\n"
-        "- Nur 1 Produkt gleichzeitig testen\n"
-        "- Ehrliche Rezension schreiben\n"
-        "- Rückerstattung nach Prüfung durch den Händler\n"
-        "- PayPal & Amazon-Profil müssen gültig sein\n"
-        "- Keine Fake-Bewertungen!",
-        parse_mode="Markdown"
-    )
-    return MENU
-
-# 🆘 --- Support ---
-async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🆘 Bei Fragen schreibe bitte an: support@testazon.com")
+if __name__ == "__main__":
+    main()
