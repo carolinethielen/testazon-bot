@@ -12,6 +12,7 @@ from telegram.ext import (
 )
 
 from flask import Flask, request
+from threading import Thread
 
 # Flask App für Webhooks
 app = Flask(__name__)
@@ -196,8 +197,9 @@ def main():
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(handle_order_selection))
 
-    # Start Flask server
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
+    # Start Flask server in a separate thread
+    thread = Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': int(os.getenv("PORT", 5000))})
+    thread.start()
 
 if __name__ == "__main__":
     main()
