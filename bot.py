@@ -10,6 +10,12 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     CallbackQueryHandler, ContextTypes, ConversationHandler, filters
 )
+from telegram.ext import Dispatcher, Updater
+
+from flask import Flask, request
+
+# Flask App für Webhooks
+app = Flask(__name__)
 
 # Logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -145,19 +151,30 @@ async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Profil ändern
 async def change_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Hier kannst du eine Funktion einfügen, um dem Benutzer zu ermöglichen, das Profil zu bearbeiten.
     await update.message.reply_text("🔄 Dein Profil wird bearbeitet... Was möchtest du ändern?", reply_markup=main_menu_keyboard())
     return PROFILE_CHANGE
 
 # Support
 async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Hier kannst du Support-Optionen definieren.
     await update.message.reply_text("🆘 Wie können wir dir helfen? Bitte beschreibe dein Problem.", reply_markup=main_menu_keyboard())
     return SUPPORT
 
-# Bot-Setup
+# Flask Webhook Setup
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode('UTF-8')
+    update = Update.de_json(json_str, application.bot)
+    application.update_queue.put(update)
+    return 'OK'
+
+# Bot Setup
 def main():
-    app = ApplicationBuilder().token(API_TOKEN).build()
+    global application
+    application = ApplicationBuilder().token(API_TOKEN).build()
+
+    # Set webhook
+    webhook_url = os.getenv("WEBHOOK_URL")
+    application.bot.set_webhook(webhook_url + "/webhook")
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -177,10 +194,11 @@ def main():
         fallbacks=[]
     )
 
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(handle_order_selection))
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(handle_order_selection))
 
-    app.run_polling()
+    # Start Flask server
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
 
 if __name__ == "__main__":
     main()
