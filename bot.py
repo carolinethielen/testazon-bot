@@ -8,7 +8,7 @@ from aiogram.dispatcher.filters import Text
 import sqlite3
 import os
 
-API_TOKEN = 'DEIN_BOT_TOKEN_HIER'
+API_TOKEN = '8137004758:AAHaBW6aZwoMTn60rR9gK_FXqJ_69bEydMQ'
 
 logging.basicConfig(level=logging.INFO)
 
