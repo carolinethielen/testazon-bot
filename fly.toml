@@ -1,0 +1,10 @@
+app = "testazon-bot"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TELEGRAM_TOKEN = "8137004758:AAHaBW6aZwoMTn60rR9gK_FXqJ_69bEydMQ"  # Ersetze dies mit deinem Token
+
+[deploy]
+  release_command = "python bot.py"  # Befehl zum Starten des Bots
