@@ -34,7 +34,7 @@ users = {}
 
 # Menü-Tastatur
 def main_menu_keyboard():
-    return ReplyKeyboardMarkup([
+    return ReplyKeyboardMarkup([ 
         ["🛍️ Verfügbare Produkte", "📦 Aktive Bestellungen"],
         ["💸 Rückerstattungsstatus", "📜 Regeln & Infos"],
         ["🆘 Support", "🔄 Profil ändern"]
