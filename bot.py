@@ -1,128 +1,105 @@
-import logging
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InputFile
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.dispatcher.filters import Text
-import sqlite3
 import os
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-API_TOKEN = '8137004758:AAHaBW6aZwoMTn60rR9gK_FXqJ_69bEydMQ'
+# API Token von Heroku Config Vars
+API_TOKEN = os.getenv("8137004758:AAHaBW6aZwoMTn60rR9gK_FXqJ_69bEydMQ")
 
-logging.basicConfig(level=logging.INFO)
+# Admin ID, ebenfalls aus den Heroku Config Vars
+ADMIN_ID = os.getenv("6014547283")
 
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
+# Funktion für den Start-Befehl
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('Hallo! Ich bin der Testazon-Bot. Was möchtest du tun?\n'
+                              'Wähle ein Produkt, gib deine PayPal E-Mail und Amazon-Link ein.')
 
-# === Datenbank einrichten ===
-if not os.path.exists("users.db"):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute('''CREATE TABLE users (telegram_id INTEGER PRIMARY KEY, paypal_email TEXT, amazon_link TEXT)''')
-    c.execute('''CREATE TABLE reviews (telegram_id INTEGER, product_id TEXT, screenshot TEXT, photo TEXT, status TEXT)''')
-    conn.commit()
-    conn.close()
+# Funktion für das Registrieren der PayPal E-Mail
+def set_paypal(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    user_text = update.message.text
+    
+    if user_text.startswith('/paypal '):
+        paypal_email = user_text.split(' ', 1)[1]
+        # Speichern der PayPal E-Mail in einer Datei oder Datenbank (hier als Beispiel)
+        update.message.reply_text(f"Deine PayPal-E-Mail wurde gespeichert: {paypal_email}")
+    else:
+        update.message.reply_text("Bitte sende deine PayPal-E-Mail mit dem Befehl: /paypal <deine_email@example.com>")
 
-# === FSM States ===
-class Form(StatesGroup):
-    paypal = State()
-    amazon = State()
-    choose_product = State()
-    wait_review = State()
+# Funktion für das Registrieren des Amazon-Links
+def set_amazon_link(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    user_text = update.message.text
+    
+    if user_text.startswith('/amazon '):
+        amazon_link = user_text.split(' ', 1)[1]
+        # Speichern des Amazon Links in einer Datei oder Datenbank (hier als Beispiel)
+        update.message.reply_text(f"Dein Amazon-Link wurde gespeichert: {amazon_link}")
+    else:
+        update.message.reply_text("Bitte sende deinen Amazon-Link mit dem Befehl: /amazon <dein_amazon_link>")
 
-# === Produkte (statisch für Demo) ===
-PRODUCTS = {
-    "101": "USB-C Kabel",
-    "102": "Bluetooth Kopfhörer",
-    "103": "Fitness Tracker"
-}
+# Funktion zur Anzeige von verfügbaren Produkten
+def show_products(update: Update, context: CallbackContext) -> None:
+    # Dies ist ein Beispiel für die Produktliste. Du kannst die Liste dynamisch anpassen.
+    products = [
+        {"id": "1", "name": "Produkt 1", "price": "10€"},
+        {"id": "2", "name": "Produkt 2", "price": "20€"},
+        {"id": "3", "name": "Produkt 3", "price": "30€"},
+    ]
 
-# === /start ===
-@dp.message_handler(commands='start')
-async def start(message: types.Message):
-    await message.reply("Willkommen bei Testazon! Bitte sende mir deine PayPal-Email-Adresse.")
-    await Form.paypal.set()
+    message = "Verfügbare Produkte:\n"
+    for product in products:
+        message += f"{product['id']}. {product['name']} - {product['price']}\n"
 
-# === PayPal Adresse speichern ===
-@dp.message_handler(state=Form.paypal)
-async def process_paypal(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['paypal'] = message.text
-    await message.reply("Danke! Jetzt bitte deinen Amazon-Profil-Link senden.")
-    await Form.amazon.set()
+    update.message.reply_text(message)
 
-# === Amazon-Link speichern und User eintragen ===
-@dp.message_handler(state=Form.amazon)
-async def process_amazon(message: types.Message, state: FSMContext):
-    telegram_id = message.from_user.id
-    async with state.proxy() as data:
-        paypal = data['paypal']
-        amazon = message.text
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("REPLACE INTO users (telegram_id, paypal_email, amazon_link) VALUES (?, ?, ?)",
-              (telegram_id, paypal, amazon))
-    conn.commit()
-    conn.close()
-    await message.reply("Top! Hier sind die verfügbaren Produkte:")
-    product_list = "\n".join([f"ID {pid}: {name}" for pid, name in PRODUCTS.items()])
-    await message.reply(product_list + "\n\nBitte gib die Produkt-ID ein, die du testen möchtest.")
-    await Form.choose_product.set()
+# Funktion für die Bestellung von Produkten
+def order_product(update: Update, context: CallbackContext) -> None:
+    user_text = update.message.text
+    
+    if user_text.startswith('/order '):
+        product_id = user_text.split(' ', 1)[1]
+        # Hier logische Verbindung zum Bestellsystem oder zur API herstellen
+        update.message.reply_text(f"Produkt {product_id} wurde erfolgreich bestellt.")
+    else:
+        update.message.reply_text("Bitte sende den Befehl /order <Produkt_ID>, um ein Produkt zu bestellen.")
 
-# === Produkt auswählen ===
-@dp.message_handler(state=Form.choose_product)
-async def process_product(message: types.Message, state: FSMContext):
-    product_id = message.text.strip()
-    if product_id not in PRODUCTS:
-        await message.reply("Ungültige Produkt-ID. Bitte nochmal versuchen.")
-        return
-    async with state.proxy() as data:
-        data['product_id'] = product_id
-    await message.reply(f"Bitte kaufe nun das Produkt '{PRODUCTS[product_id]}' bei Amazon.\nWenn es ankommt, sende den Screenshot der Rezension und ein Foto des Produkts.")
-    await Form.wait_review.set()
+# Funktion zum Hinzufügen von Feedback und Bildern nach der Bestellung
+def feedback(update: Update, context: CallbackContext) -> None:
+    user_text = update.message.text
+    
+    if user_text.startswith('/feedback '):
+        feedback_message = user_text.split(' ', 1)[1]
+        # Hier Feedback speichern oder weiterverarbeiten
+        update.message.reply_text(f"Dein Feedback wurde erhalten: {feedback_message}")
+    else:
+        update.message.reply_text("Bitte sende dein Feedback mit dem Befehl: /feedback <dein_feedback>")
 
-# === Screenshot und Foto empfangen ===
-@dp.message_handler(content_types=['photo', 'document'], state=Form.wait_review)
-async def process_review(message: types.Message, state: FSMContext):
-    telegram_id = message.from_user.id
-    async with state.proxy() as data:
-        product_id = data['product_id']
-    photo_id = None
-    file_id = None
-    if message.photo:
-        photo_id = message.photo[-1].file_id
-    if message.document:
-        file_id = message.document.file_id
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("INSERT INTO reviews (telegram_id, product_id, screenshot, photo, status) VALUES (?, ?, ?, ?, 'pending')",
-              (telegram_id, product_id, file_id, photo_id))
-    conn.commit()
-    conn.close()
-    await message.reply("Danke! Wir prüfen deine Unterlagen und melden uns. Die Rückerstattung erfolgt nach Bestätigung über PayPal.")
-    await state.finish()
+# Hauptfunktion zum Starten des Bots
+def main() -> None:
+    # Telegram Updater initialisieren
+    updater = Updater(API_TOKEN)
 
-# === Admin: Liste aller offenen Aufträge ===
-@dp.message_handler(commands='auftraege')
-async def admin_list(message: types.Message):
-    if message.from_user.id != DEIN_TELEGRAM_ADMIN_ID:
-        return
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("SELECT r.telegram_id, r.product_id, r.screenshot, r.photo, r.status FROM reviews r WHERE r.status='pending'")
-    rows = c.fetchall()
-    if not rows:
-        await message.reply("Keine offenen Aufträge.")
-        return
-    for row in rows:
-        uid, pid, screenshot, photo, status = row
-        text = f"User: {uid}\nProdukt: {PRODUCTS.get(pid, pid)}\nStatus: {status}"
-        await message.reply(text)
-        if screenshot:
-            await bot.send_document(message.chat.id, screenshot)
-        if photo:
-            await bot.send_photo(message.chat.id, photo)
+    # Dispatcher für die Handhabung der Commands
+    dispatcher = updater.dispatcher
+
+    # Handler für /start
+    dispatcher.add_handler(CommandHandler("start", start))
+    # Handler für /paypal
+    dispatcher.add_handler(CommandHandler("paypal", set_paypal))
+    # Handler für /amazon
+    dispatcher.add_handler(CommandHandler("amazon", set_amazon_link))
+    # Handler für /products
+    dispatcher.add_handler(CommandHandler("products", show_products))
+    # Handler für /order
+    dispatcher.add_handler(CommandHandler("order", order_product))
+    # Handler für /feedback
+    dispatcher.add_handler(CommandHandler("feedback", feedback))
+
+    # Starten des Bots
+    updater.start_polling()
+
+    # Lässt den Bot weiterlaufen
+    updater.idle()
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    main()
