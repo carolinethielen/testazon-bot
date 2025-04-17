@@ -143,5 +143,5 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    app = ApplicationBuilder().token("API_TOKEN").build()
+    app.run_polling()
