@@ -1,104 +1,143 @@
 import os
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, ConversationHandler, CallbackContext
+from telegram.ext import Updater
 
-# API Token von Heroku Config Vars
-API_TOKEN = os.getenv("API_TOKEN")
+# API-Token und Admin-ID als Umgebungsvariablen festlegen
+API_TOKEN = os.getenv("API_TOKEN")  # Token aus der Umgebungsvariable
+ADMIN_ID = os.getenv("ADMIN_ID")    # Admin-ID aus der Umgebungsvariable
 
-# Admin ID, ebenfalls aus den Heroku Config Vars
-ADMIN_ID = os.getenv("ADMIN_ID")
+# Sicherstellen, dass der API-Token und die Admin-ID gesetzt sind
+if not API_TOKEN or not ADMIN_ID:
+    raise ValueError("API_TOKEN oder ADMIN_ID wurde nicht gesetzt!")
 
-# Funktion für den Start-Befehl
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Hallo! Ich bin der Testazon-Bot. Was möchtest du tun?\n'
-                              'Wähle ein Produkt, gib deine PayPal E-Mail und Amazon-Link ein.')
+# Status-Konstanten für den ConversationHandler
+PRODUCT_SELECTION, PAYPAL_EMAIL, AMAZON_LINK, PRODUCT_ORDER, REVIEW_UPLOAD = range(5)
 
-# Funktion für das Registrieren der PayPal E-Mail
-def set_paypal(update: Update, context: CallbackContext) -> None:
-    user_id = update.message.from_user.id
-    user_text = update.message.text
-    
-    if user_text.startswith('/paypal '):
-        paypal_email = user_text.split(' ', 1)[1]
-        # Speichern der PayPal E-Mail in einer Datei oder Datenbank (hier als Beispiel)
-        update.message.reply_text(f"Deine PayPal-E-Mail wurde gespeichert: {paypal_email}")
-    else:
-        update.message.reply_text("Bitte sende deine PayPal-E-Mail mit dem Befehl: /paypal <deine_email@example.com>")
+# Einfache Produkt-Datenbank (simuliert)
+# Du kannst dies später durch ein API oder eine Datenbankabfrage ersetzen
+products = {
+    "123": {"name": "Smartphone", "price": 199.99},
+    "124": {"name": "Laptop", "price": 999.99},
+    "125": {"name": "Kopfhörer", "price": 59.99},
+}
 
-# Funktion für das Registrieren des Amazon-Links
-def set_amazon_link(update: Update, context: CallbackContext) -> None:
-    user_id = update.message.from_user.id
-    user_text = update.message.text
-    
-    if user_text.startswith('/amazon '):
-        amazon_link = user_text.split(' ', 1)[1]
-        # Speichern des Amazon Links in einer Datei oder Datenbank (hier als Beispiel)
-        update.message.reply_text(f"Dein Amazon-Link wurde gespeichert: {amazon_link}")
-    else:
-        update.message.reply_text("Bitte sende deinen Amazon-Link mit dem Befehl: /amazon <dein_amazon_link>")
+# Start Funktion
+def start(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    update.message.reply_text(
+        f"Hallo {user.first_name}, willkommen bei Testazon! Ich kann dir helfen, Produkte zu kaufen und Rezensionen zu hinterlassen, um eine Rückerstattung vom Händler zu erhalten. "
+        "Lass uns loslegen!",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("Verfügbare Produkte", callback_data="view_products"),
+        ]])
+    )
+    return PRODUCT_SELECTION
 
-# Funktion zur Anzeige von verfügbaren Produkten
-def show_products(update: Update, context: CallbackContext) -> None:
-    # Dies ist ein Beispiel für die Produktliste. Du kannst die Liste dynamisch anpassen.
-    products = [
-        {"id": "1", "name": "Produkt 1", "price": "10€"},
-        {"id": "2", "name": "Produkt 2", "price": "20€"},
-        {"id": "3", "name": "Produkt 3", "price": "30€"},
+# Funktion, um die verfügbaren Produkte anzuzeigen
+def view_products(update: Update, context: CallbackContext):
+    keyboard = [
+        [InlineKeyboardButton(f"{product['name']} - ${product['price']}", callback_data=product_id)]
+        for product_id, product in products.items()
     ]
+    keyboard.append([InlineKeyboardButton("Abbrechen", callback_data="cancel")])
 
-    message = "Verfügbare Produkte:\n"
-    for product in products:
-        message += f"{product['id']}. {product['name']} - {product['price']}\n"
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        "Wähle ein Produkt aus:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-    update.message.reply_text(message)
+    return PAYPAL_EMAIL
 
-# Funktion für die Bestellung von Produkten
-def order_product(update: Update, context: CallbackContext) -> None:
-    user_text = update.message.text
+# Funktion, um die PayPal-E-Mail vom Nutzer zu erhalten
+def request_paypal_email(update: Update, context: CallbackContext):
+    context.user_data["product_id"] = update.callback_query.data
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        "Bitte gib deine PayPal-E-Mail-Adresse ein, um fortzufahren:"
+    )
+    return PAYPAL_EMAIL
+
+# Funktion, um die Amazon-Profil-Link vom Nutzer zu erhalten
+def request_amazon_link(update: Update, context: CallbackContext):
+    context.user_data["paypal_email"] = update.message.text
+    update.message.reply_text(
+        "Danke! Jetzt gib bitte deinen Amazon-Profil-Link ein:"
+    )
+    return AMAZON_LINK
+
+# Funktion, um das Produkt zu bestellen
+def order_product(update: Update, context: CallbackContext):
+    context.user_data["amazon_link"] = update.message.text
+    product_id = context.user_data["product_id"]
+    product = products.get(product_id)
     
-    if user_text.startswith('/order '):
-        product_id = user_text.split(' ', 1)[1]
-        # Hier logische Verbindung zum Bestellsystem oder zur API herstellen
-        update.message.reply_text(f"Produkt {product_id} wurde erfolgreich bestellt.")
-    else:
-        update.message.reply_text("Bitte sende den Befehl /order <Produkt_ID>, um ein Produkt zu bestellen.")
+    # Bestellbestätigung
+    update.message.reply_text(
+        f"Du hast das Produkt **{product['name']}** bestellt. "
+        "Wir prüfen deine PayPal-E-Mail und Amazon-Profil-Link und geben dir dann den Link zum Produkt, das du bewerten kannst."
+    )
 
-# Funktion zum Hinzufügen von Feedback und Bildern nach der Bestellung
-def feedback(update: Update, context: CallbackContext) -> None:
-    user_text = update.message.text
+    # Rückerstattungsprozess und Verifizierung durch Admin (Nachricht an Admin)
+    admin_message = f"Neuer Bestellvorgang: {product['name']}\n" \
+                    f"Produkt ID: {product_id}\n" \
+                    f"PayPal E-Mail: {context.user_data['paypal_email']}\n" \
+                    f"Amazon Profil Link: {context.user_data['amazon_link']}\n" \
+                    f"Benutzer-ID: {update.message.from_user.id}\n" \
+                    f"Verifizierung erforderlich!"
     
-    if user_text.startswith('/feedback '):
-        feedback_message = user_text.split(' ', 1)[1]
-        # Hier Feedback speichern oder weiterverarbeiten
-        update.message.reply_text(f"Dein Feedback wurde erhalten: {feedback_message}")
-    else:
-        update.message.reply_text("Bitte sende dein Feedback mit dem Befehl: /feedback <dein_feedback>")
+    # Sende Nachricht an Admin
+    context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
+    
+    update.message.reply_text(
+        "Bitte warte auf die Verifizierung. Du wirst benachrichtigt, sobald deine Bestellung abgeschlossen ist."
+    )
 
-# Hauptfunktion zum Starten des Bots
-def main() -> None:
-    # Telegram Updater initialisieren
+    return REVIEW_UPLOAD
+
+# Funktion, um die Rezension und das Bild hochzuladen
+def upload_review(update: Update, context: CallbackContext):
+    update.message.reply_text(
+        "Bitte lade deinen Amazon-Rezensionslink und ein Bild deines Produkts hoch. "
+        "Sobald dies erledigt ist, erhältst du die Rückerstattung vom Händler."
+    )
+    return ConversationHandler.END
+
+# Abbruch-Handler
+def cancel(update: Update, context: CallbackContext):
+    update.callback_query.answer()
+    update.callback_query.edit_message_text("Der Vorgang wurde abgebrochen.")
+    return ConversationHandler.END
+
+# Hauptfunktion, die den Bot startet
+def main():
+    # Erstelle den Updater mit dem API-Token
     updater = Updater(API_TOKEN)
 
-    # Dispatcher für die Handhabung der Commands
+    # Dispatcher für die Bearbeitung von Nachrichten
     dispatcher = updater.dispatcher
 
-    # Handler für /start
-    dispatcher.add_handler(CommandHandler("start", start))
-    # Handler für /paypal
-    dispatcher.add_handler(CommandHandler("paypal", set_paypal))
-    # Handler für /amazon
-    dispatcher.add_handler(CommandHandler("amazon", set_amazon_link))
-    # Handler für /products
-    dispatcher.add_handler(CommandHandler("products", show_products))
-    # Handler für /order
-    dispatcher.add_handler(CommandHandler("order", order_product))
-    # Handler für /feedback
-    dispatcher.add_handler(CommandHandler("feedback", feedback))
+    # ConversationHandler zur Steuerung des Gesprächsflusses
+    conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            PRODUCT_SELECTION: [CallbackQueryHandler(view_products, pattern="^view_products$")],
+            PAYPAL_EMAIL: [CallbackQueryHandler(request_paypal_email, pattern=r"^\d{3,5}$")],
+            AMAZON_LINK: [MessageHandler(Filters.text & ~Filters.command, request_amazon_link)],
+            PRODUCT_ORDER: [MessageHandler(Filters.text & ~Filters.command, order_product)],
+            REVIEW_UPLOAD: [MessageHandler(Filters.photo, upload_review)],
+        },
+        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel$")],
+    )
 
-    # Starten des Bots
+    # Hinzufügen des ConversationHandlers
+    dispatcher.add_handler(conversation_handler)
+
+    # Startet den Bot
     updater.start_polling()
 
-    # Lässt den Bot weiterlaufen
+    # Blockiert, bis der Bot gestoppt wird
     updater.idle()
 
 if __name__ == '__main__':
