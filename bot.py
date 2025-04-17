@@ -4,9 +4,9 @@ import time
 from telegram import (
     InlineKeyboardButton, 
     InlineKeyboardMarkup, 
-    Update, 
-    ParseMode
+    Update
 )
+from telegram.constants import ParseMode  # Änderung hier
 from telegram.ext import (
     ApplicationBuilder, 
     CommandHandler, 
