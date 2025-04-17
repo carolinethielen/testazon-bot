@@ -95,15 +95,17 @@ async def upload_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users[user_id]["profile_pic"] = photo_file_id
 
     # Start der "Verifizierung" des Amazon-Profils
-    await update.message.reply_text("🔄 Dein Amazon-Profil wird überprüft... Bitte warte einen Moment.")
+    verification_message = await update.message.reply_text("🔄 Dein Amazon-Profil wird überprüft... Bitte warte einen Moment.")
     
     # Simulieren eines Ladebalkens
     for i in range(1, 11):
         time.sleep(1)  # Verzögert die Antwort, um den Ladebalken zu simulieren
         progress = "█" * i + "░" * (10 - i)
-        await update.message.edit_text(f"🔄 Verifizierung läuft... {progress}")
+        await verification_message.edit_text(f"🔄 Verifizierung läuft... {progress}")
 
-    await update.message.edit_text("✅ Amazon-Profilbild erfolgreich verifiziert!", reply_markup=main_menu_keyboard())
+    # Nach dem Ladebalken: Verifizierung abgeschlossen und zum Menü
+    await verification_message.edit_text("✅ Amazon-Profilbild erfolgreich verifiziert!")
+    await update.message.reply_text("🎉 Dein Profil wurde erfolgreich verifiziert. Du kannst nun mit den Produkttests fortfahren.", reply_markup=main_menu_keyboard())
     return MENU
 
 # 🔄 --- Profil ändern ---
@@ -171,7 +173,7 @@ async def active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown")
     return MENU
 
-# 🔁 --- Rückerstattungsstatus ---
+# 💸 --- Rückerstattungsstatus ---
 async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ Deine Rückerstattung ist *in Bearbeitung*. Bitte hab etwas Geduld.")
     return MENU
