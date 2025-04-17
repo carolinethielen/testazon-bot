@@ -10,7 +10,6 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     CallbackQueryHandler, ContextTypes, ConversationHandler, filters
 )
-from telegram.ext import Dispatcher, Updater
 
 from flask import Flask, request
 
