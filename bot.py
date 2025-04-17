@@ -27,14 +27,14 @@ except ValueError:
     raise ValueError("❌ ADMIN_ID muss eine Zahl sein!")
 
 # States
-(MENU, ENTER_PAYPAL, ENTER_AMAZON, UPLOAD_PROFILE) = range(4)
+(MENU, ENTER_PAYPAL, ENTER_AMAZON, UPLOAD_PROFILE, PROFILE_CHANGE, SUPPORT) = range(6)
 
 # RAM-Datenbank (nur temporär!)
 users = {}
 
 # Menü-Tastatur
 def main_menu_keyboard():
-    return ReplyKeyboardMarkup([ 
+    return ReplyKeyboardMarkup([  
         ["🛍️ Verfügbare Produkte", "📦 Aktive Bestellungen"],
         ["💸 Rückerstattungsstatus", "📜 Regeln & Infos"],
         ["🆘 Support", "🔄 Profil ändern"]
@@ -71,10 +71,10 @@ async def enter_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     verification = await update.message.reply_text("🔍 Profil wird geprüft...")
 
     for i in range(1, 11):
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)  # Verlangsamt die Schleife
         bar = "█" * i + "░" * (10 - i)
         await verification.edit_text(f"🔍 Prüfung... {bar}")
-
+    
     await verification.edit_text("✅ Amazon-Link verifiziert!")
     await update.message.reply_text("📸 Bitte sende jetzt einen Screenshot deines Amazon-Profils.")
     return UPLOAD_PROFILE
@@ -90,7 +90,7 @@ async def upload_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     verification = await update.message.reply_text("🔍 Bild wird überprüft...")
 
     for i in range(1, 11):
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)  # Verlangsamt die Schleife
         bar = "█" * i + "░" * (10 - i)
         await verification.edit_text(f"🔍 Bildprüfung... {bar}")
 
@@ -143,6 +143,18 @@ async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📜 Regeln:\n1. Bestelle nur verifizierte Produkte\n2. Kein Betrug\n3. Rückerstattung nach Bewertung.")
     return MENU
 
+# Profil ändern
+async def change_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Hier kannst du eine Funktion einfügen, um dem Benutzer zu ermöglichen, das Profil zu bearbeiten.
+    await update.message.reply_text("🔄 Dein Profil wird bearbeitet... Was möchtest du ändern?", reply_markup=main_menu_keyboard())
+    return PROFILE_CHANGE
+
+# Support
+async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Hier kannst du Support-Optionen definieren.
+    await update.message.reply_text("🆘 Wie können wir dir helfen? Bitte beschreibe dein Problem.", reply_markup=main_menu_keyboard())
+    return SUPPORT
+
 # Bot-Setup
 def main():
     app = ApplicationBuilder().token(API_TOKEN).build()
@@ -158,6 +170,8 @@ def main():
                 MessageHandler(filters.Regex("📦 Aktive Bestellungen"), active_orders),
                 MessageHandler(filters.Regex("💸 Rückerstattungsstatus"), refund_status),
                 MessageHandler(filters.Regex("📜 Regeln & Infos"), show_rules),
+                MessageHandler(filters.Regex("🔄 Profil ändern"), change_profile),
+                MessageHandler(filters.Regex("🆘 Support"), support),
             ],
         },
         fallbacks=[]
