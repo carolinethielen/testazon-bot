@@ -1,143 +1,102 @@
-import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, ConversationHandler, CallbackContext
-from telegram.ext import Updater
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (Updater, CommandHandler, CallbackQueryHandler,
+                          MessageHandler, Filters, ConversationHandler, CallbackContext)
+import re
 
-# API-Token und Admin-ID als Umgebungsvariablen festlegen
-API_TOKEN = os.getenv("API_TOKEN")  # Token aus der Umgebungsvariable
-ADMIN_ID = os.getenv("ADMIN_ID")    # Admin-ID aus der Umgebungsvariable
+# States
+(PAYPAL_EMAIL, AMAZON_LINK, TESTING_COUNT, PRODUCT_ORDER, ACTIVE_ORDERS, HELP, RULES) = range(7)
 
-# Sicherstellen, dass der API-Token und die Admin-ID gesetzt sind
-if not API_TOKEN or not ADMIN_ID:
-    raise ValueError("API_TOKEN oder ADMIN_ID wurde nicht gesetzt!")
-
-# Status-Konstanten für den ConversationHandler
-PRODUCT_SELECTION, PAYPAL_EMAIL, AMAZON_LINK, PRODUCT_ORDER, REVIEW_UPLOAD = range(5)
-
-# Einfache Produkt-Datenbank (simuliert)
-# Du kannst dies später durch ein API oder eine Datenbankabfrage ersetzen
-products = {
-    "123": {"name": "Smartphone", "price": 199.99},
-    "124": {"name": "Laptop", "price": 999.99},
-    "125": {"name": "Kopfhörer", "price": 59.99},
-}
-
-# Start Funktion
-def start(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    update.message.reply_text(
-        f"Hallo {user.first_name}, willkommen bei Testazon! Ich kann dir helfen, Produkte zu kaufen und Rezensionen zu hinterlassen, um eine Rückerstattung vom Händler zu erhalten. "
-        "Lass uns loslegen!",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("Verfügbare Produkte", callback_data="view_products"),
-        ]])
-    )
-    return PRODUCT_SELECTION
-
-# Funktion, um die verfügbaren Produkte anzuzeigen
-def view_products(update: Update, context: CallbackContext):
+def start(update: Update, context: CallbackContext) -> int:
     keyboard = [
-        [InlineKeyboardButton(f"{product['name']} - ${product['price']}", callback_data=product_id)]
-        for product_id, product in products.items()
+        [InlineKeyboardButton("Produkt auswählen", callback_data="order_product")],
+        [InlineKeyboardButton("Aktive Bestellungen", callback_data="active_orders")],
+        [InlineKeyboardButton("Regeln & Infos", callback_data="rules")],
+        [InlineKeyboardButton("Hilfe & Support", callback_data="help")]
     ]
-    keyboard.append([InlineKeyboardButton("Abbrechen", callback_data="cancel")])
-
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(
-        "Wähle ein Produkt aus:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-    return PAYPAL_EMAIL
-
-# Funktion, um die PayPal-E-Mail vom Nutzer zu erhalten
-def request_paypal_email(update: Update, context: CallbackContext):
-    context.user_data["product_id"] = update.callback_query.data
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(
-        "Bitte gib deine PayPal-E-Mail-Adresse ein, um fortzufahren:"
-    )
-    return PAYPAL_EMAIL
-
-# Funktion, um die Amazon-Profil-Link vom Nutzer zu erhalten
-def request_amazon_link(update: Update, context: CallbackContext):
-    context.user_data["paypal_email"] = update.message.text
+    reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text(
-        "Danke! Jetzt gib bitte deinen Amazon-Profil-Link ein:"
-    )
-    return AMAZON_LINK
-
-# Funktion, um das Produkt zu bestellen
-def order_product(update: Update, context: CallbackContext):
-    context.user_data["amazon_link"] = update.message.text
-    product_id = context.user_data["product_id"]
-    product = products.get(product_id)
-    
-    # Bestellbestätigung
-    update.message.reply_text(
-        f"Du hast das Produkt **{product['name']}** bestellt. "
-        "Wir prüfen deine PayPal-E-Mail und Amazon-Profil-Link und geben dir dann den Link zum Produkt, das du bewerten kannst."
-    )
-
-    # Rückerstattungsprozess und Verifizierung durch Admin (Nachricht an Admin)
-    admin_message = f"Neuer Bestellvorgang: {product['name']}\n" \
-                    f"Produkt ID: {product_id}\n" \
-                    f"PayPal E-Mail: {context.user_data['paypal_email']}\n" \
-                    f"Amazon Profil Link: {context.user_data['amazon_link']}\n" \
-                    f"Benutzer-ID: {update.message.from_user.id}\n" \
-                    f"Verifizierung erforderlich!"
-    
-    # Sende Nachricht an Admin
-    context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
-    
-    update.message.reply_text(
-        "Bitte warte auf die Verifizierung. Du wirst benachrichtigt, sobald deine Bestellung abgeschlossen ist."
-    )
-
-    return REVIEW_UPLOAD
-
-# Funktion, um die Rezension und das Bild hochzuladen
-def upload_review(update: Update, context: CallbackContext):
-    update.message.reply_text(
-        "Bitte lade deinen Amazon-Rezensionslink und ein Bild deines Produkts hoch. "
-        "Sobald dies erledigt ist, erhältst du die Rückerstattung vom Händler."
+        "Willkommen zum Produkttester Bot! Bitte wähle eine Option:", reply_markup=reply_markup
     )
     return ConversationHandler.END
 
-# Abbruch-Handler
-def cancel(update: Update, context: CallbackContext):
-    update.callback_query.answer()
-    update.callback_query.edit_message_text("Der Vorgang wurde abgebrochen.")
+def show_rules(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    query.edit_message_text("Regeln:\n1. Nur ein Test pro Produkt\n2. Ehrliche Rezensionen\n3. Rückerstattung nach Bewertung")
     return ConversationHandler.END
 
-# Hauptfunktion, die den Bot startet
-def main():
-    # Erstelle den Updater mit dem API-Token
-    updater = Updater(API_TOKEN)
+def help_support(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    query.edit_message_text("Bei Fragen kontaktiere den Support unter @SupportHandle")
+    return ConversationHandler.END
 
-    # Dispatcher für die Bearbeitung von Nachrichten
+def order_product(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    query.edit_message_text("Bitte gib deine PayPal-Adresse ein:")
+    return PAYPAL_EMAIL
+
+def verify_paypal_email(update: Update, context: CallbackContext) -> int:
+    email = update.message.text
+    if re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        context.user_data['paypal_email'] = email
+        update.message.reply_text("Super! Bitte sende jetzt deinen Amazon-Profillink:")
+        return AMAZON_LINK
+    else:
+        update.message.reply_text("Das sieht nicht wie eine gültige E-Mail aus. Bitte nochmal eingeben:")
+        return PAYPAL_EMAIL
+
+def request_amazon_link(update: Update, context: CallbackContext) -> int:
+    link = update.message.text
+    if "amazon" in link:
+        context.user_data['amazon_link'] = link
+        update.message.reply_text("Wie viele Produkte hast du bisher getestet?")
+        return TESTING_COUNT
+    else:
+        update.message.reply_text("Bitte gib einen gültigen Amazon-Link ein:")
+        return AMAZON_LINK
+
+def set_testing_count(update: Update, context: CallbackContext) -> int:
+    try:
+        count = int(update.message.text)
+        context.user_data['testing_count'] = count
+        update.message.reply_text(f"Vielen Dank! Deine Angaben:\nPayPal: {context.user_data['paypal_email']}\nAmazon: {context.user_data['amazon_link']}\nGetestet: {count}\nWir melden uns bei dir mit einem passenden Produkt.")
+        return ConversationHandler.END
+    except ValueError:
+        update.message.reply_text("Bitte gib eine gültige Zahl ein:")
+        return TESTING_COUNT
+
+def show_active_orders(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    query.edit_message_text("Aktive Bestellungen:\n1. Produkt XY - Rückerstattung ausstehend\n2. Produkt Z - Rückerstattung erfolgt")
+    return ConversationHandler.END
+
+def cancel(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text("Abgebrochen. Du kannst mit /start neu beginnen.")
+    return ConversationHandler.END
+
+def main() -> None:
+    updater = Updater("DEIN_BOT_TOKEN_HIER")
     dispatcher = updater.dispatcher
 
-    # ConversationHandler zur Steuerung des Gesprächsflusses
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            PRODUCT_SELECTION: [CallbackQueryHandler(view_products, pattern="^view_products$")],
-            PAYPAL_EMAIL: [CallbackQueryHandler(request_paypal_email, pattern=r"^\d{3,5}$")],
+            PAYPAL_EMAIL: [MessageHandler(Filters.text & ~Filters.command, verify_paypal_email)],
             AMAZON_LINK: [MessageHandler(Filters.text & ~Filters.command, request_amazon_link)],
-            PRODUCT_ORDER: [MessageHandler(Filters.text & ~Filters.command, order_product)],
-            REVIEW_UPLOAD: [MessageHandler(Filters.photo, upload_review)],
+            TESTING_COUNT: [MessageHandler(Filters.text & ~Filters.command, set_testing_count)],
+            PRODUCT_ORDER: [CallbackQueryHandler(order_product, pattern="^order_product$")],
+            ACTIVE_ORDERS: [CallbackQueryHandler(show_active_orders, pattern="^active_orders$")],
+            HELP: [CallbackQueryHandler(help_support, pattern="^help$")],
+            RULES: [CallbackQueryHandler(show_rules, pattern="^rules$")],
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel$")],
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
 
-    # Hinzufügen des ConversationHandlers
     dispatcher.add_handler(conversation_handler)
-
-    # Startet den Bot
     updater.start_polling()
-
-    # Blockiert, bis der Bot gestoppt wird
     updater.idle()
 
 if __name__ == '__main__':
