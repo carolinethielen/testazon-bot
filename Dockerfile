@@ -1,20 +1,21 @@
-# Verwende ein offizielles Python-Image
+# Verwenden Sie ein Python-Image
 FROM python:3.9-slim
 
-# Setze das Arbeitsverzeichnis
+# Arbeitsverzeichnis setzen
 WORKDIR /app
 
-# Kopiere die requirements.txt
-COPY requirements.txt .
-
-# Installiere die Abhängigkeiten
+# Installieren der Abhängigkeiten
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Kopiere die restlichen Dateien (z.B. dein bot.py)
-COPY . .
+# Kopiere den gesamten Code
+COPY . /app/
 
-# Exponiere den Port, den die App verwenden wird
+# Setzen des Umgebungsvariablen für den Port
+ENV PORT 5000
+
+# Exponieren des Ports
 EXPOSE 5000
 
-# Starte den Bot (es kann sein, dass du dies noch anpassen musst, je nach dem, wie dein Bot läuft)
+# Flask-App starten
 CMD ["python", "bot.py"]
