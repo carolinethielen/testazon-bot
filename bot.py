@@ -3,10 +3,10 @@ from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
 # API Token von Heroku Config Vars
-API_TOKEN = os.getenv("8137004758:AAHaBW6aZwoMTn60rR9gK_FXqJ_69bEydMQ")
+API_TOKEN = os.getenv("API_TOKEN")
 
 # Admin ID, ebenfalls aus den Heroku Config Vars
-ADMIN_ID = os.getenv("6014547283")
+ADMIN_ID = os.getenv("ADMIN_ID")
 
 # Funktion für den Start-Befehl
 def start(update: Update, context: CallbackContext) -> None:
