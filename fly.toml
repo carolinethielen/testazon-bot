@@ -1,11 +1,11 @@
-app = "testazon-bot-mgfosg"
+app = "testazon-bot"
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
   API_TOKEN = "8137004758:AAHaBW6aZwoMTn60rR9gK_FXqJ_69bEydMQ"
-  WEBHOOK_URL = "https://testazon-bot-mgfosg.fly.dev/"
+  WEBHOOK_URL = "https://testazon-bot.fly.dev"
   ADMIN_ID = "6014547283"
 
 [[services]]
