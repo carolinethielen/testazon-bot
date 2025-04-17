@@ -2,21 +2,19 @@ import os
 import logging
 import re
 import asyncio
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup
+from telegram import (
+    InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, Update, KeyboardButton
+)
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ConversationHandler,
-    ContextTypes,
-    filters
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, ConversationHandler, filters
 )
 
-# Logging Setup
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Logging
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# Environment Variablen
+# Lade Umgebungsvariablen
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 
@@ -29,72 +27,123 @@ except ValueError:
     raise ValueError("❌ ADMIN_ID muss eine Zahl sein!")
 
 # States
-(
-    MENU,
-    ENTER_PAYPAL,
-    ENTER_AMAZON,
-    UPLOAD_PROFILE,
-    VERIFY_PROFILE,
-    PRODUCT_SELECTION,
-    REVIEW_UPLOAD
-) = range(7)
+(MENU, ENTER_PAYPAL, ENTER_AMAZON, UPLOAD_PROFILE) = range(4)
 
+# RAM-Datenbank (nur temporär!)
 users = {}
 
-# Start-Funktion (wird vom /start-Befehl aufgerufen)
+# Menü-Tastatur
+def main_menu_keyboard():
+    return ReplyKeyboardMarkup([
+        ["🛍️ Verfügbare Produkte", "📦 Aktive Bestellungen"],
+        ["💸 Rückerstattungsstatus", "📜 Regeln & Infos"],
+        ["🆘 Support", "🔄 Profil ändern"]
+    ], resize_keyboard=True)
+
+# Start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await update.message.reply_text(
-        f"👋 Hallo {user.first_name}, willkommen zum Produkttest-Bot!\n\n"
-        "Bitte gib deine PayPal-Adresse ein, um fortzufahren:"
-    )
+    user_id = update.effective_user.id
+    users[user_id] = {"paypal": None, "amazon_link": None, "profile_pic": None, "orders": []}
+    await update.message.reply_text("👋 Willkommen bei Testazon!\n\nBitte gib deine PayPal-E-Mail ein:")
     return ENTER_PAYPAL
 
-# Beispiel: Ladebalken mit asyncio
-async def fake_verification(message, context):
-    for i in range(1, 11):
-        await asyncio.sleep(0.7)
-        progress = "█" * i + "░" * (10 - i)
-        await message.edit_text(f"🔄 Überprüfung läuft... {progress}")
-
-# Dummy-Handler als Platzhalter (damit dein Bot nicht crasht)
+# PayPal E-Mail
 async def enter_paypal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ PayPal-Adresse gespeichert.\nBitte gib deinen Amazon-Profil-Link ein.")
+    email = update.message.text
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        await update.message.reply_text("❌ Ungültige E-Mail. Bitte versuch's nochmal:")
+        return ENTER_PAYPAL
+
+    user_id = update.effective_user.id
+    users[user_id]["paypal"] = email
+    await update.message.reply_text("✅ PayPal gespeichert!\n\nBitte sende jetzt deinen Amazon-Profillink:")
     return ENTER_AMAZON
 
+# Amazon-Link
 async def enter_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Amazon-Link gespeichert.\nBitte lade jetzt einen Screenshot deines Profils hoch.")
+    link = update.message.text
+    if not re.match(r"https://www\.amazon\.de/gp/profile/amzn1\.account\.[A-Za-z0-9]+", link):
+        await update.message.reply_text("❌ Ungültiger Link. Bitte sende deinen korrekten Amazon-Profil-Link.")
+        return ENTER_AMAZON
+
+    user_id = update.effective_user.id
+    users[user_id]["amazon_link"] = link
+    verification = await update.message.reply_text("🔍 Profil wird geprüft...")
+
+    for i in range(1, 11):
+        await asyncio.sleep(0.5)
+        bar = "█" * i + "░" * (10 - i)
+        await verification.edit_text(f"🔍 Prüfung... {bar}")
+
+    await verification.edit_text("✅ Amazon-Link verifiziert!")
+    await update.message.reply_text("📸 Bitte sende jetzt einen Screenshot deines Amazon-Profils.")
     return UPLOAD_PROFILE
 
+# Profilbild
 async def upload_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Screenshot empfangen. Dein Profil wird überprüft...")
+    user_id = update.effective_user.id
+    if not update.message.photo:
+        await update.message.reply_text("❌ Bitte sende ein *Bild* deines Profils.")
+        return UPLOAD_PROFILE
+
+    users[user_id]["profile_pic"] = update.message.photo[-1].file_id
+    verification = await update.message.reply_text("🔍 Bild wird überprüft...")
+
+    for i in range(1, 11):
+        await asyncio.sleep(0.5)
+        bar = "█" * i + "░" * (10 - i)
+        await verification.edit_text(f"🔍 Bildprüfung... {bar}")
+
+    await verification.edit_text("✅ Profil erfolgreich verifiziert!")
+    await update.message.reply_text("🎉 Du kannst jetzt mit dem Produkttest starten!", reply_markup=main_menu_keyboard())
     return MENU
 
+# Menü: Verfügbare Produkte
 async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🛍️ Hier sind deine verfügbaren Produkte...")
+    user_id = update.effective_user.id
+    if not users[user_id]["paypal"] or not users[user_id]["profile_pic"]:
+        await update.message.reply_text("⚠️ Bitte verifiziere zuerst dein Profil mit /start.")
+        return MENU
 
-async def active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📦 Du hast derzeit keine aktiven Bestellungen.")
+    keyboard = [
+        [InlineKeyboardButton("🧴 Produkt 1 – ID: 1234", callback_data="order_1234")],
+        [InlineKeyboardButton("🎧 Produkt 2 – ID: 5678", callback_data="order_5678")]
+    ]
+    await update.message.reply_text("🛍️ Hier sind deine Produkte:", reply_markup=InlineKeyboardMarkup(keyboard))
+    return MENU
 
-async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💸 Rückerstattungsstatus: keine offenen Beträge.")
-
-async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📜 Regeln und Infos:\n1. Ehrliche Bewertung\n2. Screenshot-Pflicht...")
-
-async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🆘 Support erreichst du über Telegram: @deinSupportBot")
-
-async def change_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Profil ändern ist aktuell noch in Arbeit.")
-
-async def handle_profile_change(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer("Profiländerung gewählt")
-
+# Produktauswahl
 async def handle_order_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer("Produkt ausgewählt")
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    product_id = query.data.replace("order_", "")
+    users[user_id]["orders"].append({"id": product_id, "status": "🕒 Ausstehend"})
+    await query.edit_message_text(f"✅ Produkt *{product_id}* ausgewählt. Bitte bestelle es und sende danach den Rezensionslink.", parse_mode="Markdown")
+    return MENU
 
-# Bot starten
+# Aktive Bestellungen
+async def active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    orders = users[user_id]["orders"]
+    if not orders:
+        await update.message.reply_text("📭 Keine aktiven Bestellungen.")
+    else:
+        msg = "📦 *Deine Bestellungen:*\n\n" + "\n".join([f"- ID: `{o['id']}` – Status: {o['status']}" for o in orders])
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    return MENU
+
+# Rückerstattung
+async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("💸 Deine Rückerstattung ist *in Bearbeitung*.\nBitte hab etwas Geduld.", parse_mode="Markdown")
+    return MENU
+
+# Regeln
+async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📜 Regeln:\n1. Bestelle nur verifizierte Produkte\n2. Kein Betrug\n3. Rückerstattung nach Bewertung.")
+    return MENU
+
+# Bot-Setup
 def main():
     app = ApplicationBuilder().token(API_TOKEN).build()
 
@@ -109,17 +158,13 @@ def main():
                 MessageHandler(filters.Regex("📦 Aktive Bestellungen"), active_orders),
                 MessageHandler(filters.Regex("💸 Rückerstattungsstatus"), refund_status),
                 MessageHandler(filters.Regex("📜 Regeln & Infos"), show_rules),
-                MessageHandler(filters.Regex("🆘 Support"), show_support),
-                MessageHandler(filters.Regex("🔄 Profil ändern"), change_profile),
-            ]
+            ],
         },
-        fallbacks=[CommandHandler("start", start)],
-        allow_reentry=True
+        fallbacks=[]
     )
 
     app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(handle_profile_change, pattern="^change_"))
-    app.add_handler(CallbackQueryHandler(handle_order_selection, pattern="^order_"))
+    app.add_handler(CallbackQueryHandler(handle_order_selection))
 
     app.run_polling()
 
