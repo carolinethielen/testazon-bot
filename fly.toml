@@ -1,4 +1,4 @@
-app = "testazon-bot"
+app = "testazon-bot-mgfosg"
 
 [build]
   dockerfile = "Dockerfile"
