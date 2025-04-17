@@ -1,5 +1,7 @@
 import os
 import logging
+import re
+import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
@@ -10,7 +12,6 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-import time
 
 # 🌍 --- Setup Logging ---
 logging.basicConfig(
@@ -80,7 +81,33 @@ async def enter_paypal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     users[user_id]["paypal"] = email
-    await update.message.reply_text("✅ PayPal E-Mail gespeichert!\n\n📸 Bitte sende jetzt einen Screenshot deines *Amazon-Profils*.")
+    await update.message.reply_text("✅ PayPal E-Mail gespeichert!\n\n🔗 Bitte sende jetzt deinen *Amazon-Profil-Link* (z.B. https://www.amazon.de/gp/profile/amzn1.account.AFRPHSTS62ZRJBV75RDCL5UWEYUA).")
+    return ENTER_AMAZON
+
+# 🌐 --- Amazon-Profil-Link erfassen ---
+async def enter_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    amazon_link = update.message.text
+    amazon_link_regex = r"https://www\.amazon\.de/gp/profile/amzn1\.account\.[A-Za-z0-9]+"
+
+    if not re.match(amazon_link_regex, amazon_link):
+        await update.message.reply_text("❌ Bitte gib einen gültigen Amazon-Profil-Link ein.")
+        return ENTER_AMAZON
+
+    user_id = update.effective_user.id
+    users[user_id]["amazon_link"] = amazon_link
+
+    # Simulierung der Überprüfung des Amazon-Links mit Ladebalken
+    verification_message = await update.message.reply_text("🔄 Dein Amazon-Profil wird überprüft... Bitte warte einen Moment.")
+    
+    # Simulieren eines Ladebalkens
+    for i in range(1, 11):
+        time.sleep(1)  # Verzögert die Antwort, um den Ladebalken zu simulieren
+        progress = "█" * i + "░" * (10 - i)
+        await verification_message.edit_text(f"🔄 Überprüfung läuft... {progress}")
+
+    # Nach dem Ladebalken: Verifizierung abgeschlossen und zum nächsten Schritt
+    await verification_message.edit_text("✅ Amazon-Profil erfolgreich überprüft!")
+    await update.message.reply_text("📸 Bitte sende nun einen Screenshot deines Amazon-Profils (Profilbild).")
     return UPLOAD_PROFILE
 
 # 🖼️ --- Profilbild speichern ---
@@ -95,7 +122,7 @@ async def upload_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users[user_id]["profile_pic"] = photo_file_id
 
     # Start der "Verifizierung" des Amazon-Profils
-    verification_message = await update.message.reply_text("🔄 Dein Amazon-Profil wird überprüft... Bitte warte einen Moment.")
+    verification_message = await update.message.reply_text("🔄 Dein Amazon-Profilbild wird überprüft... Bitte warte einen Moment.")
     
     # Simulieren eines Ladebalkens
     for i in range(1, 11):
@@ -113,7 +140,8 @@ async def change_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     keyboard = [
         [InlineKeyboardButton("✉️ PayPal E-Mail ändern", callback_data="change_paypal")],
-        [InlineKeyboardButton("📸 Amazon Profilbild ändern", callback_data="change_amazon")]
+        [InlineKeyboardButton("📸 Amazon Profilbild ändern", callback_data="change_amazon")],
+        [InlineKeyboardButton("🔗 Amazon Profil-Link ändern", callback_data="change_amazon_link")]
     ]
     await update.message.reply_text("🔄 Was möchtest du ändern?", reply_markup=InlineKeyboardMarkup(keyboard))
     return MENU
@@ -129,6 +157,9 @@ async def handle_profile_change(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "change_amazon":
         await query.edit_message_text("📸 Bitte sende ein neues Bild deines Amazon-Profils.")
         return UPLOAD_PROFILE
+    elif query.data == "change_amazon_link":
+        await query.edit_message_text("🔗 Bitte gib deinen neuen Amazon-Profil-Link ein:")
+        return ENTER_AMAZON
 
 # 🛍️ --- Verfügbare Produkte ---
 async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,4 +206,10 @@ async def active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 💸 --- Rückerstattungsstatus ---
 async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏳ Deine Rückerstattung ist *in*_
+    await update.message.reply_text("⏳ Deine Rückerstattung ist *in Bearbeitung*. Bitte hab etwas Geduld.")
+    return MENU
+
+# 📜 --- Regeln & Infos ---
+async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📜 *Regeln für Produkttests:*
