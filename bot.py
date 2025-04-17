@@ -47,7 +47,7 @@ users = {}
 
 # 🔘 --- Hauptmenü Buttons ---
 def main_menu_keyboard():
-    return ReplyKeyboardMarkup([[
+    return ReplyKeyboardMarkup([[ 
         "🛍️ Verfügbare Produkte", "📦 Aktive Bestellungen"
     ], [
         "💸 Rückerstattungsstatus", "📜 Regeln & Infos"
@@ -212,4 +212,16 @@ async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 📜 --- Regeln & Infos ---
 async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📜 *Regeln für Produkttests:*
+        "📜 *Regeln für Produkttests:*\n"
+        "- Nur 1 Produkt gleichzeitig testen\n"
+        "- Ehrliche Rezension schreiben\n"
+        "- Rückerstattung nach Prüfung durch den Händler\n"
+        "- PayPal & Amazon-Profil müssen gültig sein\n"
+        "- Keine Fake-Bewertungen!",
+        parse_mode="Markdown"
+    )
+    return MENU
+
+# 🆘 --- Support ---
+async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🆘 Bei Fragen schreibe bitte an: support@testazon.com")
