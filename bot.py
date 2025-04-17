@@ -123,15 +123,6 @@ if __name__ == "__main__":
     # Webhook setzen
     set_webhook()
 
-    # Startet den Flask-Server und den Bot
-    from threading import Thread
-    def run_flask():
-        app.run(host="0.0.0.0", port=5000)
-
-    # Flask-Server in einem separaten Thread starten
-    thread = Thread(target=run_flask)
-    thread.start()
-
     # Initialisiere den Bot
     application = ApplicationBuilder().token(API_TOKEN).build()
 
@@ -150,5 +141,5 @@ if __name__ == "__main__":
     # Setzt den Webhook über Flask
     set_webhook()
 
-    # Hält den Bot in einem laufenden Zustand
-    application.run_polling(drop_pending_updates=True)
+    # Startet den Flask-Server
+    app.run(host="0.0.0.0", port=5000)
