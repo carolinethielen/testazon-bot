@@ -41,6 +41,15 @@ except ValueError:
 
 users = {}
 
+# Start-Funktion (wird vom /start-Befehl aufgerufen)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    await update.message.reply_text(
+        f"👋 Hallo {user.first_name}, willkommen zum Produkttest-Bot!\n\n"
+        "Bitte gib deine PayPal-Adresse ein, um fortzufahren:"
+    )
+    return ENTER_PAYPAL
+
 # Beispiel: Ladebalken mit asyncio
 async def fake_verification(message, context):
     for i in range(1, 11):
@@ -48,7 +57,42 @@ async def fake_verification(message, context):
         progress = "█" * i + "░" * (10 - i)
         await message.edit_text(f"🔄 Überprüfung läuft... {progress}")
 
-# ... (deine anderen Handler bleiben gleich, mit `await asyncio.sleep()` statt `time.sleep()`)
+# Dummy-Handler als Platzhalter (damit dein Bot nicht crasht)
+async def enter_paypal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ PayPal-Adresse gespeichert.\nBitte gib deinen Amazon-Profil-Link ein.")
+    return ENTER_AMAZON
+
+async def enter_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Amazon-Link gespeichert.\nBitte lade jetzt einen Screenshot deines Profils hoch.")
+    return UPLOAD_PROFILE
+
+async def upload_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Screenshot empfangen. Dein Profil wird überprüft...")
+    return MENU
+
+async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🛍️ Hier sind deine verfügbaren Produkte...")
+
+async def active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📦 Du hast derzeit keine aktiven Bestellungen.")
+
+async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("💸 Rückerstattungsstatus: keine offenen Beträge.")
+
+async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📜 Regeln und Infos:\n1. Ehrliche Bewertung\n2. Screenshot-Pflicht...")
+
+async def show_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🆘 Support erreichst du über Telegram: @deinSupportBot")
+
+async def change_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔄 Profil ändern ist aktuell noch in Arbeit.")
+
+async def handle_profile_change(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer("Profiländerung gewählt")
+
+async def handle_order_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer("Produkt ausgewählt")
 
 # Bot starten
 def main():
