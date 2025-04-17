@@ -10,9 +10,8 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     CallbackQueryHandler, ContextTypes, ConversationHandler, filters
 )
-
 from flask import Flask, request
-from threading import Thread
+from telegram import Bot
 
 # Flask App für Webhooks
 app = Flask(__name__)
@@ -22,10 +21,11 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 # Lade Umgebungsvariablen
 API_TOKEN = os.getenv("API_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 ADMIN_ID = os.getenv("ADMIN_ID")
 
-if not API_TOKEN or not ADMIN_ID:
-    raise RuntimeError("❌ API_TOKEN oder ADMIN_ID fehlt in den Umgebungsvariablen!")
+if not API_TOKEN or not ADMIN_ID or not WEBHOOK_URL:
+    raise RuntimeError("❌ API_TOKEN, ADMIN_ID oder WEBHOOK_URL fehlen in den Umgebungsvariablen!")
 
 try:
     ADMIN_ID = int(ADMIN_ID)
@@ -104,102 +104,51 @@ async def upload_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎉 Du kannst jetzt mit dem Produkttest starten!", reply_markup=main_menu_keyboard())
     return MENU
 
-# Menü: Verfügbare Produkte
-async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not users[user_id]["paypal"] or not users[user_id]["profile_pic"]:
-        await update.message.reply_text("⚠️ Bitte verifiziere zuerst dein Profil mit /start.")
-        return MENU
-
-    keyboard = [
-        [InlineKeyboardButton("🧴 Produkt 1 – ID: 1234", callback_data="order_1234")],
-        [InlineKeyboardButton("🎧 Produkt 2 – ID: 5678", callback_data="order_5678")]
-    ]
-    await update.message.reply_text("🛍️ Hier sind deine Produkte:", reply_markup=InlineKeyboardMarkup(keyboard))
-    return MENU
-
-# Produktauswahl
-async def handle_order_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    product_id = query.data.replace("order_", "")
-    users[user_id]["orders"].append({"id": product_id, "status": "🕒 Ausstehend"})
-    await query.edit_message_text(f"✅ Produkt *{product_id}* ausgewählt. Bitte bestelle es und sende danach den Rezensionslink.", parse_mode="Markdown")
-    return MENU
-
-# Aktive Bestellungen
-async def active_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    orders = users[user_id]["orders"]
-    if not orders:
-        await update.message.reply_text("📭 Keine aktiven Bestellungen.")
-    else:
-        msg = "📦 *Deine Bestellungen:*\n\n" + "\n".join([f"- ID: `{o['id']}` – Status: {o['status']}" for o in orders])
-        await update.message.reply_text(msg, parse_mode="Markdown")
-    return MENU
-
-# Rückerstattung
-async def refund_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💸 Deine Rückerstattung ist *in Bearbeitung*.\nBitte hab etwas Geduld.", parse_mode="Markdown")
-    return MENU
-
-# Regeln
-async def show_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📜 Regeln:\n1. Bestelle nur verifizierte Produkte\n2. Kein Betrug\n3. Rückerstattung nach Bewertung.")
-    return MENU
-
-# Profil ändern
-async def change_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Dein Profil wird bearbeitet... Was möchtest du ändern?", reply_markup=main_menu_keyboard())
-    return PROFILE_CHANGE
-
-# Support
-async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🆘 Wie können wir dir helfen? Bitte beschreibe dein Problem.", reply_markup=main_menu_keyboard())
-    return SUPPORT
-
-# Flask Webhook Setup
-@app.route('/webhook', methods=['POST'])
+# Flask Webhook-Handler
+@app.route(f"/{API_TOKEN}", methods=["POST"])
 def webhook():
-    json_str = request.get_data().decode('UTF-8')
-    update = Update.de_json(json_str, application.bot)
-    application.update_queue.put(update)
-    return 'OK'
+    json_str = request.get_data().decode("UTF-8")
+    update = Update.de_json(json_str, Bot(API_TOKEN))
+    application.process_update(update)
+    return "OK"
 
-# Bot Setup
-def main():
-    global application
+# Webhook setzen
+def set_webhook():
+    bot = Bot(API_TOKEN)
+    webhook_url = f"{WEBHOOK_URL}/{API_TOKEN}"
+    bot.set_webhook(webhook_url)
+    logging.info(f"Webhook gesetzt auf {webhook_url}")
+
+if __name__ == "__main__":
+    # Webhook setzen
+    set_webhook()
+
+    # Startet den Flask-Server und den Bot
+    from threading import Thread
+    def run_flask():
+        app.run(host="0.0.0.0", port=5000)
+
+    # Flask-Server in einem separaten Thread starten
+    thread = Thread(target=run_flask)
+    thread.start()
+
+    # Initialisiere den Bot
     application = ApplicationBuilder().token(API_TOKEN).build()
 
-    # Set webhook
-    webhook_url = os.getenv("WEBHOOK_URL")
-    application.bot.set_webhook(webhook_url + "/webhook")
-
-    conv_handler = ConversationHandler(
+    # Definiere die Handlers
+    application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
             ENTER_PAYPAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_paypal)],
             ENTER_AMAZON: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_amazon)],
             UPLOAD_PROFILE: [MessageHandler(filters.PHOTO, upload_profile)],
-            MENU: [
-                MessageHandler(filters.Regex("🛍️ Verfügbare Produkte"), show_products),
-                MessageHandler(filters.Regex("📦 Aktive Bestellungen"), active_orders),
-                MessageHandler(filters.Regex("💸 Rückerstattungsstatus"), refund_status),
-                MessageHandler(filters.Regex("📜 Regeln & Infos"), show_rules),
-                MessageHandler(filters.Regex("🔄 Profil ändern"), change_profile),
-                MessageHandler(filters.Regex("🆘 Support"), support),
-            ],
+            MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, start)],
         },
-        fallbacks=[]
-    )
+        fallbacks=[],
+    ))
 
-    application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(handle_order_selection))
+    # Setzt den Webhook über Flask
+    set_webhook()
 
-    # Start Flask server in a separate thread
-    thread = Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': int(os.getenv("PORT", 5000))})
-    thread.start()
-
-if __name__ == "__main__":
-    main()
+    # Hält den Bot in einem laufenden Zustand
+    application.run_polling(drop_pending_updates=True)
